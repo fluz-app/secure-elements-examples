@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Fluz Secure Elements — Card Reveal (plain HTML)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #111; }
+  h1 { font-size: 18px; }
+  p.status { color: #555; }
+  p.error { color: #b3261e; }
+  button { font: inherit; padding: 6px 12px; margin: 4px 8px 4px 0; cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: 0.5; }
+  #card-viewer { display: flex; gap: 12px; min-height: 40px; margin: 16px 0; border: 1px dashed #ccc; padding: 12px; }
+  #card-viewer iframe { width: 160px; height: 32px; border: 0; }
+</style>
+</head>
+<body>
+<h1>Fluz Secure Elements — Card Reveal</h1>
+<p>Loads <code>@fluz/secure-elements</code> as a browser global via <code>&lt;script src&gt;</code> — no bundler required. Mints a client token from this page's own tiny backend (<code>server.js</code>) and mounts a <code>CardViewer</code> against a real <code>frame-host</code>.</p>
+
+<p class="status" id="status">loading…</p>
+<p class="error" id="error"></p>
+
+<div id="card-viewer"></div>
+
+<p>
+  <button id="reveal-button" disabled>Reveal</button>
+  <button id="mask-button" disabled>Mask again</button>
+</p>
+
+<script src="https://secure-cdn-staging.fluz.app/secure-elements/v0.1.0/index.global.js"></script>
+<script>
+(function () {
+  var statusEl = document.getElementById("status");
+  var errorEl = document.getElementById("error");
+  var revealButton = document.getElementById("reveal-button");
+  var maskButton = document.getElementById("mask-button");
+  var FIELDS = ["pan", "expiry", "cvv"];
+
+  function setStatus(text) { statusEl.textContent = text; }
+  function setError(text) { errorEl.textContent = text || ""; }
+
+  var viewer = null;
+
+  async function mintAndMount() {
+    setStatus("requesting client token…");
+    setError("");
+    revealButton.disabled = true;
+    maskButton.disabled = true;
+
+    var response;
+    try {
+      response = await fetch("/mint-token");
+    } catch (err) {
+      setStatus("failed");
+      setError("mint-token request failed: " + err);
+      return;
+    }
+
+    var body = await response.json().catch(function () { return {}; });
+    if (!response.ok) {
+      setStatus("failed");
+      setError("mint-token failed (" + response.status + "): " + JSON.stringify(body));
+      return;
+    }
+
+    setStatus("mounting card viewer…");
+
+    // Mirrors docs/card-reveal-guide.md exactly.
+    viewer = FluzSecureElements.createCardViewer({
+      clientToken: body.clientToken,
+      loadToken: body.loadToken,
+      frameHostOrigin: body.frameHostOrigin,
+      fields: FIELDS,
+      style: {
+        fontFamily: "IBM Plex Mono",
+        fontSize: "16px",
+        color: "#111111",
+      },
+    });
+
+    viewer.onError(function (error) {
+      setError(error.code + ": " + error.message);
+    });
+
+    viewer.onMount(function () {
+      setStatus("mounted — click Reveal to show the card");
+      revealButton.disabled = false;
+      maskButton.disabled = false;
+    });
+
+    try {
+      await viewer.mount(document.getElementById("card-viewer"));
+    } catch (err) {
+      setStatus("failed");
+      setError(err && err.code ? err.code + ": " + err.message : String(err));
+    }
+  }
+
+  mintAndMount();
+
+  revealButton.addEventListener("click", async function () {
+    if (!viewer) return;
+    try {
+      await viewer.reveal();
+    } catch (err) {
+      setError(err && err.code ? err.code + ": " + err.message : String(err));
+    }
+  });
+
+  maskButton.addEventListener("click", function () {
+    if (!viewer) return;
+    FIELDS.forEach(function (field) {
+      viewer.setMask(field, true);
+    });
+  });
+
+  window.addEventListener("beforeunload", function () {
+    if (viewer) viewer.destroy();
+  });
+})();
+</script>
+</body>
+</html>

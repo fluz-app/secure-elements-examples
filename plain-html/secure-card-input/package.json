@@ -1,0 +1,12 @@
+{
+  "name": "example-plain-html-secure-card-input",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e .env -- node server.js"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0"
+  }
+}

@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Fluz Secure Elements — Secure Card Input (plain HTML)</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; color: #111; }
+  h1 { font-size: 18px; }
+  p.status { color: #555; }
+  p.error { color: #b3261e; }
+  p.declined { color: #9a5b00; }
+  p.success { color: #1f7a3d; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+  .field-frame { border: 1px solid #ccc; border-radius: 4px; padding: 8px; min-height: 20px; }
+  .field-frame iframe { width: 100%; height: 20px; border: 0; display: block; }
+  .field-frame.invalid { border-color: #b3261e; }
+  input { font: inherit; width: 100%; box-sizing: border-box; padding: 7px 8px; border: 1px solid #ccc; border-radius: 4px; }
+  .row { display: flex; gap: 8px; }
+  .row > div { flex: 1; }
+  button { font: inherit; padding: 8px 16px; margin-top: 20px; cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: 0.5; }
+</style>
+</head>
+<body>
+<h1>Fluz Secure Elements — Secure Card Input</h1>
+<p>Loads <code>@fluz/secure-elements</code> as a browser global via <code>&lt;script src&gt;</code>. Collects a card, cardholder name, and billing address, then registers it as a Fluz funding source — the PAN/CVV never touch this page's own JavaScript.</p>
+
+<p class="status" id="status">loading…</p>
+<p class="error" id="error"></p>
+<p class="declined" id="declined"></p>
+<p class="success" id="success"></p>
+
+<form id="submit-form">
+  <label for="pan-field">Card number</label>
+  <div class="field-frame" id="pan-field"></div>
+
+  <div class="row">
+    <div>
+      <label for="expiry-field">Expiry</label>
+      <div class="field-frame" id="expiry-field"></div>
+    </div>
+    <div>
+      <label for="cvv-field">CVV</label>
+      <div class="field-frame" id="cvv-field"></div>
+    </div>
+  </div>
+
+  <label for="cardholder-name">Cardholder name</label>
+  <input id="cardholder-name" type="text" autocomplete="cc-name" required />
+
+  <label for="address-line1">Address</label>
+  <input id="address-line1" type="text" autocomplete="address-line1" required />
+
+  <div class="row">
+    <div>
+      <label for="address-city">City</label>
+      <input id="address-city" type="text" autocomplete="address-level2" required />
+    </div>
+    <div>
+      <label for="address-state">State</label>
+      <input id="address-state" type="text" autocomplete="address-level1" />
+    </div>
+    <div>
+      <label for="address-zip">ZIP</label>
+      <input id="address-zip" type="text" autocomplete="postal-code" required />
+    </div>
+  </div>
+
+  <label for="address-country">Country</label>
+  <input id="address-country" type="text" autocomplete="country" value="US" required />
+
+  <button type="submit" id="submit-button" disabled>Add card</button>
+</form>
+
+<script src="https://secure-cdn-staging.fluz.app/secure-elements/v0.1.0/index.global.js"></script>
+<script>
+(function () {
+  var statusEl = document.getElementById("status");
+  var errorEl = document.getElementById("error");
+  var declinedEl = document.getElementById("declined");
+  var successEl = document.getElementById("success");
+  var submitButton = document.getElementById("submit-button");
+  var form = document.getElementById("submit-form");
+
+  function setStatus(text) { statusEl.textContent = text; }
+  function setError(text) { errorEl.textContent = text || ""; }
+  function setDeclined(text) { declinedEl.textContent = text || ""; }
+  function setSuccess(text) { successEl.textContent = text || ""; }
+
+  var fieldState = { pan: false, expiry: false, cvv: false };
+  var inputs = null;
+
+  function updateSubmitEnabled() {
+    var allValid = fieldState.pan && fieldState.expiry && fieldState.cvv;
+    submitButton.disabled = !allValid;
+  }
+
+  async function mintAndMount() {
+    setStatus("requesting client token…");
+    setError("");
+
+    var response;
+    try {
+      response = await fetch("/mint-token");
+    } catch (err) {
+      setStatus("failed");
+      setError("mint-token request failed: " + err);
+      return;
+    }
+
+    var body = await response.json().catch(function () { return {}; });
+    if (!response.ok) {
+      setStatus("failed");
+      setError("mint-token failed (" + response.status + "): " + JSON.stringify(body));
+      return;
+    }
+
+    setStatus("mounting input fields…");
+
+    // Mirrors docs/secure-card-input-guide.md exactly.
+    inputs = FluzSecureElements.renderFieldsForTokenization({
+      clientToken: body.clientToken,
+      loadToken: body.loadToken,
+      frameHostOrigin: body.frameHostOrigin,
+      style: {
+        fontFamily: "IBM Plex Mono",
+        fontSize: "15px",
+        color: "#111111",
+      },
+    });
+
+    inputs.onChange(function (field, state) {
+      fieldState[field] = state.isValid;
+      var frameEl = document.getElementById(field + "-field");
+      frameEl.classList.toggle("invalid", state.isDirty && !state.isValid && !state.isEmpty);
+      updateSubmitEnabled();
+    });
+
+    inputs.onError(function (error) {
+      setError(error.code + ": " + error.message);
+    });
+
+    inputs.onDeclined(function (decline) {
+      setDeclined(decline.code + ": " + decline.message);
+      setSuccess("");
+      submitButton.disabled = false;
+      submitButton.textContent = "Add card";
+    });
+
+    inputs.onSuccess(function (result) {
+      setSuccess("Added " + result.brand + " ending in " + result.last4 + " (bankCardId: " + result.bankCardId + ")");
+      setDeclined("");
+      form.reset();
+      submitButton.disabled = false;
+      submitButton.textContent = "Add card";
+    });
+
+    try {
+      await inputs.mount({
+        pan: document.getElementById("pan-field"),
+        expiry: document.getElementById("expiry-field"),
+        cvv: document.getElementById("cvv-field"),
+      });
+      setStatus("fill in the card and address, then submit");
+    } catch (err) {
+      setStatus("failed");
+      setError(err && err.code ? err.code + ": " + err.message : String(err));
+    }
+  }
+
+  mintAndMount();
+
+  form.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    if (!inputs) return;
+
+    setError("");
+    setDeclined("");
+    setSuccess("");
+    submitButton.disabled = true;
+    submitButton.textContent = "Submitting…";
+
+    try {
+      await inputs.submit({
+        cardholderName: document.getElementById("cardholder-name").value,
+        billingAddress: {
+          line1: document.getElementById("address-line1").value,
+          city: document.getElementById("address-city").value,
+          state: document.getElementById("address-state").value || undefined,
+          zipCode: document.getElementById("address-zip").value,
+          country: document.getElementById("address-country").value,
+        },
+      });
+    } catch (err) {
+      setError(err && err.code ? err.code + ": " + err.message : String(err));
+      submitButton.disabled = false;
+      submitButton.textContent = "Add card";
+    }
+  });
+
+  window.addEventListener("beforeunload", function () {
+    if (inputs) inputs.destroy();
+  });
+})();
+</script>
+</body>
+</html>

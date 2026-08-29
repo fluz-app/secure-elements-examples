@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Fluz Secure Elements — Card Reveal (React)</title>
+</head>
+<body>
+<div id="root"></div>
+<!--
+  The SDK ships as a bundled browser global from Fluz's CDN, not as an
+  installable npm package -- see ../../README.md. Loaded as a plain script
+  (not type="module") so it runs and sets window.FluzSecureElements before
+  the React module below (which is itself deferred, per the module spec)
+  ever touches it.
+-->
+<script src="https://secure-cdn-staging.fluz.app/secure-elements/v0.1.0/index.global.js"></script>
+<script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
