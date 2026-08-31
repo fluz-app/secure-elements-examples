@@ -25,6 +25,7 @@
 
 <p>
   <button id="reveal-button" disabled>Reveal</button>
+  <button id="reveal-cvv-button" disabled>Reveal CVV only</button>
   <button id="mask-button" disabled>Mask again</button>
 </p>
 
@@ -34,6 +35,7 @@
   var statusEl = document.getElementById("status");
   var errorEl = document.getElementById("error");
   var revealButton = document.getElementById("reveal-button");
+  var revealCvvButton = document.getElementById("reveal-cvv-button");
   var maskButton = document.getElementById("mask-button");
   var FIELDS = ["pan", "expiry", "cvv"];
 
@@ -46,6 +48,7 @@
     setStatus("requesting client token…");
     setError("");
     revealButton.disabled = true;
+    revealCvvButton.disabled = true;
     maskButton.disabled = true;
 
     var response;
@@ -86,6 +89,7 @@
     viewer.onMount(function () {
       setStatus("mounted — click Reveal to show the card");
       revealButton.disabled = false;
+      revealCvvButton.disabled = false;
       maskButton.disabled = false;
     });
 
@@ -103,6 +107,17 @@
     if (!viewer) return;
     try {
       await viewer.reveal();
+    } catch (err) {
+      setError(err && err.code ? err.code + ": " + err.message : String(err));
+    }
+  });
+
+  revealCvvButton.addEventListener("click", async function () {
+    if (!viewer) return;
+    try {
+      // Reveals just the CVV field, leaving pan/expiry masked until their
+      // own reveal (or the "Reveal" button above) is triggered.
+      await viewer.reveal("cvv");
     } catch (err) {
       setError(err && err.code ? err.code + ": " + err.message : String(err));
     }

@@ -86,6 +86,16 @@ export default function App() {
     }
   }
 
+  async function handleRevealCvv() {
+    try {
+      // Reveals just the CVV field, leaving pan/expiry masked until their
+      // own reveal (or the "Reveal" button above) is triggered.
+      await viewerRef.current?.reveal("cvv");
+    } catch (err) {
+      setError(err && err.code ? `${err.code}: ${err.message}` : String(err));
+    }
+  }
+
   function handleMask() {
     FIELDS.forEach((field) => viewerRef.current?.setMask(field, true));
   }
@@ -107,6 +117,9 @@ export default function App() {
       />
       <button type="button" onClick={handleReveal} disabled={!mounted} style={{ font: "inherit", padding: "6px 12px", marginRight: 8 }}>
         Reveal
+      </button>
+      <button type="button" onClick={handleRevealCvv} disabled={!mounted} style={{ font: "inherit", padding: "6px 12px", marginRight: 8 }}>
+        Reveal CVV only
       </button>
       <button type="button" onClick={handleMask} disabled={!mounted} style={{ font: "inherit", padding: "6px 12px" }}>
         Mask again

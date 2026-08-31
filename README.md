@@ -9,7 +9,7 @@ Four runnable integrations of `@fluz/secure-elements`, one per combination of in
 
 Each example is self-contained — its own `package.json`, no shared code — so you can copy any one of them out of this repo as a starting point. None of them depend on anything else in this repo at runtime: the SDK loads from Fluz's CDN (`secure-cdn-staging.fluz.app`), the same way any partner's page would, since `@fluz/secure-elements` is only ever published as a bundled CDN artifact — it isn't an installable npm package. The React examples read it off `window.FluzSecureElements` for that reason (see each `index.html`'s script tag).
 
-Read the **[Integration Guide](../docs/partner-integration-guide.md)** first; each example implements exactly the API documented there and in the [Card Reveal guide](../docs/card-reveal-guide.md) / [Secure Card Input guide](../docs/secure-card-input-guide.md). Nothing here is a simplified or fake version of the flow — every example calls Fluz's real staging `frame-host` with a real client token.
+Read the **[Integration Guide](docs/partner-integration-guide.md)** first; each example implements exactly the API documented there and in the [Card Reveal guide](docs/card-reveal-guide.md) / [Secure Card Input guide](docs/secure-card-input-guide.md). Nothing here is a simplified or fake version of the flow — every example calls Fluz's real staging `frame-host` with a real client token.
 
 ## Prerequisites
 
