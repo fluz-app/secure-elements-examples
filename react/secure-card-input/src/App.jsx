@@ -8,16 +8,18 @@ const { renderFieldsForTokenization } = window.FluzSecureElements;
 const FIELDS = ["pan", "expiry", "cvv"];
 
 export default function App() {
-  const panRef = useRef(null);
-  const expiryRef = useRef(null);
-  const cvvRef = useRef(null);
+  const containerRef = useRef(null);
   const inputsRef = useRef(null);
 
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const [declined, setDeclined] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [fieldValid, setFieldValid] = useState({ pan: false, expiry: false, cvv: false });
+  const [fieldState, setFieldState] = useState({
+    pan: { isEmpty: true, isValid: false, isDirty: false },
+    expiry: { isEmpty: true, isValid: false, isDirty: false },
+    cvv: { isEmpty: true, isValid: false, isDirty: false },
+  });
   const [submitting, setSubmitting] = useState(false);
 
   const [cardholderName, setCardholderName] = useState("");
@@ -26,6 +28,7 @@ export default function App() {
   const [region, setRegion] = useState("");
   const [zipCode, setZipCode] = useState("");
   const [country, setCountry] = useState("US");
+  const [isBackupPayment, setIsBackupPayment] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +58,10 @@ export default function App() {
 
       setStatus("mounting input fields…");
 
-      // Mirrors docs/secure-card-input-guide.md exactly.
+      // Mirrors docs/secure-card-input-guide.md exactly: one combined frame
+      // holds pan/expiry/cvv together (brand-aware CVV validation needs the
+      // frame to see the PAN field) -- it's mounted into a single container,
+      // not one ref per field.
       const inputs = renderFieldsForTokenization({
         clientToken: body.clientToken,
         loadToken: body.loadToken,
@@ -66,7 +72,7 @@ export default function App() {
 
       inputs.onChange((field, state) => {
         if (cancelled) return;
-        setFieldValid((prev) => ({ ...prev, [field]: state.isValid }));
+        setFieldState((prev) => ({ ...prev, [field]: state }));
       });
 
       inputs.onError((err) => {
@@ -88,7 +94,7 @@ export default function App() {
       });
 
       try {
-        await inputs.mount({ pan: panRef.current, expiry: expiryRef.current, cvv: cvvRef.current });
+        await inputs.mount(containerRef.current);
         if (!cancelled) setStatus("mounted");
       } catch (err) {
         if (!cancelled) {
@@ -107,7 +113,7 @@ export default function App() {
     };
   }, []);
 
-  const allFieldsValid = FIELDS.every((field) => fieldValid[field]);
+  const allFieldsValid = FIELDS.every((field) => fieldState[field].isValid);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -118,6 +124,11 @@ export default function App() {
     setSuccess(null);
     setSubmitting(true);
 
+    // submit() resolves even on a decline or a backend error -- those arrive
+    // via onDeclined/onSuccess above, not a rejection. The only things this
+    // catch actually handles are the two programmer-error guard conditions
+    // (submitting before mount() resolved, or while another submit() is
+    // still in flight) -- see docs/secure-card-input-guide.md#submitting.
     try {
       await inputsRef.current.submit({
         cardholderName,
@@ -128,6 +139,7 @@ export default function App() {
           zipCode,
           country,
         },
+        isBackupPayment,
       });
     } catch (err) {
       setError(err && err.code ? `${err.code}: ${err.message}` : String(err));
@@ -159,18 +171,16 @@ export default function App() {
       )}
 
       <form onSubmit={handleSubmit}>
-        <FieldLabel htmlFor="pan-field">Card number</FieldLabel>
-        <FieldFrame frameRef={panRef} id="pan-field" invalid={mounted && !fieldValid.pan} />
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <div style={{ flex: 1 }}>
-            <FieldLabel htmlFor="expiry-field">Expiry</FieldLabel>
-            <FieldFrame frameRef={expiryRef} id="expiry-field" invalid={mounted && !fieldValid.expiry} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <FieldLabel htmlFor="cvv-field">CVV</FieldLabel>
-            <FieldFrame frameRef={cvvRef} id="cvv-field" invalid={mounted && !fieldValid.cvv} />
-          </div>
+        <FieldLabel htmlFor="card-fields">Card number, expiry, CVV</FieldLabel>
+        <div
+          ref={containerRef}
+          id="card-fields"
+          style={{ border: "1px solid #ccc", borderRadius: 4, padding: 8, minHeight: 20 }}
+        />
+        <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          {FIELDS.map((field) => (
+            <FieldStatus key={field} state={fieldState[field]} />
+          ))}
         </div>
 
         <TextInput label="Cardholder name" autoComplete="cc-name" value={cardholderName} onChange={setCardholderName} required />
@@ -189,6 +199,11 @@ export default function App() {
         </div>
 
         <TextInput label="Country" autoComplete="country" value={country} onChange={setCountry} required />
+
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, marginTop: 12 }}>
+          <input type="checkbox" checked={isBackupPayment} onChange={(event) => setIsBackupPayment(event.target.checked)} />
+          Set as backup payment method
+        </label>
 
         <button
           type="submit"
@@ -210,19 +225,10 @@ function FieldLabel({ htmlFor, children }) {
   );
 }
 
-function FieldFrame({ frameRef, id, invalid }) {
-  return (
-    <div
-      ref={frameRef}
-      id={id}
-      style={{
-        border: `1px solid ${invalid ? "#b3261e" : "#ccc"}`,
-        borderRadius: 4,
-        padding: 8,
-        minHeight: 20,
-      }}
-    />
-  );
+function FieldStatus({ state }) {
+  const isInvalid = state.isDirty && !state.isValid && !state.isEmpty;
+  const text = isInvalid ? "invalid" : state.brand || "";
+  return <div style={{ flex: 1, fontSize: 12, color: isInvalid ? "#b3261e" : "#666" }}>{text}</div>;
 }
 
 function TextInput({ label, value, onChange, autoComplete, required }) {

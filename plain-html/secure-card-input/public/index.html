@@ -65,10 +65,15 @@
   <label for="address-country">Country</label>
   <input id="address-country" type="text" autocomplete="country" value="US" required />
 
+  <label style="display: flex; align-items: center; gap: 6px; font-weight: normal;">
+    <input type="checkbox" id="is-backup-payment" style="width: auto;" />
+    Set as backup payment method
+  </label>
+
   <button type="submit" id="submit-button" disabled>Add card</button>
 </form>
 
-<script src="https://secure-cdn-staging.fluz.app/secure-elements/v0.1.0/index.global.js"></script>
+<script src="https://secure-cdn-staging.fluz.app/secure-elements/latest/index.global.js"></script>
 <script>
 (function () {
   var statusEl = document.getElementById("status");
@@ -174,6 +179,11 @@
     submitButton.disabled = true;
     submitButton.textContent = "Submitting…";
 
+    // submit() resolves even on a decline or a backend error -- those arrive
+    // via onDeclined/onError above, not a rejection. The only things this
+    // catch actually handles are the two programmer-error guard conditions
+    // (submitting before mount() resolved, or while another submit() is
+    // still in flight) -- see docs/secure-card-input-guide.md#submitting.
     try {
       await inputs.submit({
         cardholderName: document.getElementById("cardholder-name").value,
@@ -184,6 +194,7 @@
           zipCode: document.getElementById("address-zip").value,
           country: document.getElementById("address-country").value,
         },
+        isBackupPayment: document.getElementById("is-backup-payment").checked,
       });
     } catch (err) {
       setError(err && err.code ? err.code + ": " + err.message : String(err));
