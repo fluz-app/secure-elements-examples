@@ -4,6 +4,8 @@ Card Reveal displays a cardholder's full Fluz virtual card details (PAN, expiry,
 
 Before starting here, complete the shared setup in the **[Integration Guide](./partner-integration-guide.md)**: prerequisites, loading the SDK, and minting a client token with `"purpose": "reveal"`. This page covers the reveal-specific frontend API only.
 
+Minting that token requires the `CREATE_VIRTUALCARD` OAuth scope — distinct from Secure Card Input's `MANAGE_PAYMENT` — on the access token your backend exchanges it from.
+
 ## Mount the viewer
 
 ```js

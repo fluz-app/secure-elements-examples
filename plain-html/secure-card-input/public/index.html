@@ -11,9 +11,11 @@
   p.declined { color: #9a5b00; }
   p.success { color: #1f7a3d; }
   label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
-  .field-frame { border: 1px solid #ccc; border-radius: 4px; padding: 8px; min-height: 20px; }
-  .field-frame iframe { width: 100%; height: 20px; border: 0; display: block; }
-  .field-frame.invalid { border-color: #b3261e; }
+  #card-fields { border: 1px solid #ccc; border-radius: 4px; padding: 8px; min-height: 20px; }
+  #card-fields iframe { width: 100%; height: 20px; border: 0; display: block; }
+  .field-statuses { display: flex; gap: 8px; margin-top: 4px; }
+  .field-statuses > div { flex: 1; font-size: 12px; color: #666; }
+  .field-statuses > div.invalid { color: #b3261e; }
   input { font: inherit; width: 100%; box-sizing: border-box; padding: 7px 8px; border: 1px solid #ccc; border-radius: 4px; }
   .row { display: flex; gap: 8px; }
   .row > div { flex: 1; }
@@ -31,18 +33,12 @@
 <p class="success" id="success"></p>
 
 <form id="submit-form">
-  <label for="pan-field">Card number</label>
-  <div class="field-frame" id="pan-field"></div>
-
-  <div class="row">
-    <div>
-      <label for="expiry-field">Expiry</label>
-      <div class="field-frame" id="expiry-field"></div>
-    </div>
-    <div>
-      <label for="cvv-field">CVV</label>
-      <div class="field-frame" id="cvv-field"></div>
-    </div>
+  <label>Card number, expiry, CVV</label>
+  <div id="card-fields"></div>
+  <div class="field-statuses">
+    <div id="pan-status"></div>
+    <div id="expiry-status"></div>
+    <div id="cvv-status"></div>
   </div>
 
   <label for="cardholder-name">Cardholder name</label>
@@ -131,8 +127,10 @@
 
     inputs.onChange(function (field, state) {
       fieldState[field] = state.isValid;
-      var frameEl = document.getElementById(field + "-field");
-      frameEl.classList.toggle("invalid", state.isDirty && !state.isValid && !state.isEmpty);
+      var statusEl = document.getElementById(field + "-status");
+      var isInvalid = state.isDirty && !state.isValid && !state.isEmpty;
+      statusEl.classList.toggle("invalid", isInvalid);
+      statusEl.textContent = isInvalid ? "invalid" : state.brand || "";
       updateSubmitEnabled();
     });
 
@@ -156,11 +154,7 @@
     });
 
     try {
-      await inputs.mount({
-        pan: document.getElementById("pan-field"),
-        expiry: document.getElementById("expiry-field"),
-        cvv: document.getElementById("cvv-field"),
-      });
+      await inputs.mount(document.getElementById("card-fields"));
       setStatus("fill in the card and address, then submit");
     } catch (err) {
       setStatus("failed");

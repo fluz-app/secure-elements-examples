@@ -23,7 +23,7 @@ Your backend  → mint client token  → Your frontend → SDK mounts Fluz frame
 
 Before you can integrate, please confirm the following with your Fluz integration contact:
 
-- Your application is registered with Fluz and has the `CREATE_VIRTUALCARD` OAuth scope enabled.
+- Your application is registered with Fluz and has the OAuth scope for whichever capability you're integrating enabled: `CREATE_VIRTUALCARD` for Card Reveal, `MANAGE_PAYMENT` for Secure Card Input. These are checked independently — a token scoped for one won't mint a client token for the other.
 - The origin(s) your page will embed Fluz Elements from are allow-listed for your application (required for the frames to render — this is a one-time setup step on our side).
 - You've received your environment base URL(s) (see **Environments** below).
 
@@ -87,7 +87,7 @@ Both are single-purpose and short-lived — mint a new pair for each reveal or c
 | 400 | `invalid_purpose` | `purpose` missing or invalid |
 | 400 | `virtual_card_id_required` | missing `virtualCardId` for a reveal token |
 | 401 | `unauthorized` | invalid or missing access token |
-| 403 | `insufficient_scope` | access token missing `CREATE_VIRTUALCARD` scope |
+| 403 | `insufficient_scope` | access token missing the scope required for this `purpose` (`CREATE_VIRTUALCARD` for reveal, `MANAGE_PAYMENT` for tokenization) |
 | 403 | `app_not_registered` | your application isn't registered — contact Fluz |
 | 403 | `forbidden` | card not found, or not owned by this user |
 | 500 | `internal_error` | unexpected server error |
