@@ -98,7 +98,7 @@ With a client token in hand, continue to the **[Card Reveal guide](./card-reveal
 
 ## Styling fields
 
-Both `createCardViewer` and `renderFieldsForTokenization` accept an optional `style` object, applied to every field they mount:
+`createCardViewer`, `createAccountViewer`, and `renderFieldsForTokenization` all accept an optional `style` object, applied to every field they mount:
 
 ```js
 const viewer = createCardViewer({
@@ -122,6 +122,15 @@ const viewer = createCardViewer({
 | `fontSize` | A number followed by `px`, `pt`, `em`, or `rem` (e.g. `"16px"`) |
 | `fontWeight` | `"normal"`, `"bold"`, or a multiple of 100 from `"100"` to `"900"` |
 | `fontFamily` | An exact system font name or Google Font family name — see below |
+| `width` | A number followed by `px`, `%`, `em`, or `rem` (e.g. `"100%"`, `"240px"`) |
+| `height` | Same format as `width` |
+| `border` | `"none"`, or `"<width>px <style> <color>"` where `<style>` is `solid`/`dashed`/`dotted`/`double` and `<color>` follows the same rules as `color` above (e.g. `"1px solid #d0d5dd"`) |
+| `backgroundColor` | Same format as `color` above |
+
+`width`/`height`/`border`/`backgroundColor` style the element you'd actually call "the box" around each field, but which element that is differs by viewer, since reveal and collect mount differently shaped DOM:
+
+- **`createCardViewer`/`createAccountViewer` (reveal)**: each field is its own frame holding a single value, rendered as one `display: inline-block` element — these four properties apply directly to it.
+- **`renderFieldsForTokenization` (collect)**: pan/expiry/cvv share one frame, each inside its own wrapper div (the bordered box you see around the field) — these four properties apply to that wrapper, not the input text itself. See **[Box-model styling](./secure-card-input-guide.md#box-model-styling-width-height-border-background-color)** and **[Layout](./secure-card-input-guide.md#layout)** in the Secure Card Input guide for the `layout` option this also unlocks (e.g. a full-width pan row with expiry/cvv sharing the row below).
 
 ### Fonts
 

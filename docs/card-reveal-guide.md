@@ -56,4 +56,4 @@ To reveal just one field on its own (e.g. a "Show CVV" button next to that field
 
 Before `reveal()` is called, each field already shows a partial, non-sensitive default: the PAN field shows `•••• •••• •••• <last4>`, the expiry field shows the real expiry (not sensitive on its own), and the CVV field shows `•••`. Pass `{ hidden: true }` to `setMask()` if you'd rather show nothing at all and render your own placeholder in your page.
 
-See the **[Integration Guide](./partner-integration-guide.md#styling-fields)** for styling these fields (color, font, weight, size).
+See the **[Integration Guide](./partner-integration-guide.md#styling-fields)** for styling these fields: typography (color, font, weight, size) and box-model (width, height, border, background color).

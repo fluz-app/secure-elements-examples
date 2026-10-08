@@ -28,7 +28,8 @@ await inputs.mount(document.getElementById("card-fields"));
 | `loadToken` | yes | Minted alongside `clientToken`. Travels in the iframe's URL to authorize the initial load only — it cannot authorize a submit. |
 | `frameHostOrigin` | no | One of `https://secure.fluz.app` (prod) or `https://staging.secure.fluz.app` (staging). Defaults to the prod origin. Anything else — including `localhost` outside a local SDK dev build — throws `INVALID_FRAME_HOST_ORIGIN` **synchronously from the `renderFieldsForTokenization(...)` call itself**, before you get an `inputs` object back — wrap that call in a try/catch too, not just `mount()`, if this value is ever configurable. |
 | `mountId` | no | Custom id for the postMessage handshake. Only needed if you're mounting more than one `SecureInputs`/`CardViewer` instance on the same page and need to tell their messages apart; auto-generated otherwise. |
-| `style` | no | `{ color?, fontSize?, fontFamily?, fontWeight? }`. See **[Styling fields](./partner-integration-guide.md#styling-fields)** for the validation rules — plus the collect-specific caveat below. |
+| `style` | no | `{ color?, fontSize?, fontFamily?, fontWeight?, width?, height?, border?, backgroundColor? }`. See **[Styling fields](./partner-integration-guide.md#styling-fields)** for the typography properties' validation rules, plus the collect-specific caveat and the box-model properties below — `width`/`height`/`border`/`backgroundColor` are currently only supported on this frame, not `createCardViewer`/`createAccountViewer`. |
+| `layout` | no | `"row"` (default) or `"stacked"`. See **[Layout](#layout)** below. |
 | `mountTimeoutMs` | no | How long `mount()` waits for the frame's handshake before rejecting with `MOUNT_TIMEOUT`. Default `10000`. |
 | `submitTimeoutMs` | no | How long `submit()` waits for a result before firing `onError({code: "SUBMIT_TIMEOUT"})`. Default `15000`. |
 | `excludedCardBrands` | no | e.g. `["amex"]`. Brands you don't accept — the pan field reports `isValid: false` for a matching card instead of letting the user submit it. Detected brands: `"amex"`, `"visa"`, `"mastercard"`, `"discover"`, `"diners"`, `"jcb"`. |
@@ -36,6 +37,44 @@ await inputs.mount(document.getElementById("card-fields"));
 ### Styling caveat specific to card input
 
 The general style rules and font allowlists are documented in the **[Integration Guide](./partner-integration-guide.md#styling-fields)**. One thing that guide doesn't cover because it's specific to this frame: in production, the three fields render inside a vendor (VGS) iframe that has no hook for loading external CSS. A Google Fonts `fontFamily` is silently skipped there — only a system font from the allowlist actually renders. If you need a custom webfont on this page, apply it to the labels/surrounding chrome you control instead of the field text itself.
+
+### Box-model styling: width, height, border, background color
+
+Four more `style` properties, specific to `renderFieldsForTokenization` — they style each field's visible box (the bordered rectangle around the input), not the input text itself:
+
+| Property | Accepts |
+|---|---|
+| `width` | A number followed by `px`, `%`, `em`, or `rem` (e.g. `"100%"`, `"240px"`). Applies to every field's box equally — combine with `layout: "stacked"` (below) to make pan and expiry/cvv different widths instead. |
+| `height` | Same format as `width` (e.g. `"44px"`). |
+| `border` | `"none"`, or `"<width>px <style> <color>"` where `<style>` is one of `solid`/`dashed`/`dotted`/`double` and `<color>` follows the same rules as `color` above (e.g. `"1px solid #d0d5dd"`). |
+| `backgroundColor` | Same format as `color` above. |
+
+```js
+style: {
+  fontFamily: "Inter",
+  fontSize: "16px",
+  color: "#111",
+  height: "44px",
+  border: "1px solid #d0d5dd",
+  backgroundColor: "#f9fafb",
+}
+```
+
+These default to the frame's existing look (a `1px solid #ccc` box, white background, sized to fill its row) when omitted — passing `style` with only typography properties, as in the example at the top of this page, leaves the box unchanged.
+
+### Layout
+
+By default (`layout: "row"` or omitted), pan/expiry/cvv share one row as three equal-width boxes. `layout: "stacked"` instead gives pan its own full-width row, with expiry and cvv splitting the row below it — the shape most partners ask for, since it mirrors a physical card:
+
+```js
+const inputs = renderFieldsForTokenization({
+  clientToken,
+  loadToken,
+  layout: "stacked",
+});
+```
+
+An invalid value rejects `mount()` with `FluzElementsError` (`error.code === "INVALID_LAYOUT"`), checked synchronously before anything is sent to the frame — same pattern as `INVALID_STYLE`. Whichever layout you use, give the mount container's height room to match: `row` needs roughly one field's height, `stacked` needs two (plus the 8px gap between them).
 
 ## Field state — `onChange`
 
@@ -130,6 +169,7 @@ Treat any code you don't recognize the same as `DECLINED_OTHER`. The raw gateway
 | `MOUNT_TIMEOUT` | rejected `mount()` | The frame never completed its handshake within `mountTimeoutMs`. |
 | `MOUNT_FAILED` | rejected `mount()` / `submit()` | The iframe failed to load, `mount()` was called twice, or `submit()` was called before `mount()` resolved. |
 | `INVALID_STYLE` | rejected `mount()` | A `style` value failed validation — checked before anything is sent to the frame. |
+| `INVALID_LAYOUT` | rejected `mount()` | `layout` wasn't `"row"` or `"stacked"` — checked before anything is sent to the frame. |
 | `INVALID_FRAME_HOST_ORIGIN` | thrown synchronously by `renderFieldsForTokenization(...)` itself, before `mount()` exists to call | `frameHostOrigin` isn't a valid URL or isn't an allowed Fluz host. |
 | `FIELD_ERROR` | `onError` | The frame hit an internal error updating a field's state. Rare; treat as an unmountable session and re-mount. |
 | `SUBMIT_TIMEOUT` | `onError` | No result arrived within `submitTimeoutMs`. The request may or may not have gone through server-side — don't assume either way; re-check via your backend before letting the user retry. |
@@ -162,7 +202,15 @@ const inputs = renderFieldsForTokenization({
   loadToken,
   frameHostOrigin: "https://staging.secure.fluz.app",
   excludedCardBrands: ["amex"],
-  style: { fontFamily: "system-ui", fontSize: "16px", color: "#111" },
+  layout: "stacked",
+  style: {
+    fontFamily: "system-ui",
+    fontSize: "16px",
+    color: "#111",
+    height: "44px",
+    border: "1px solid #d0d5dd",
+    backgroundColor: "#f9fafb",
+  },
 });
 
 inputs.onChange((field, state) => updateFieldUi(field, state));
