@@ -1,11 +1,12 @@
 # Fluz Secure Elements — Integration Guide
 
-Fluz Secure Elements lets you embed two card capabilities directly in your web app without card data ever passing through your servers or being readable by your frontend code:
+Fluz Secure Elements lets you embed card and identity capabilities directly in your web app without the sensitive values — card PAN/CVV/expiry and the last four digits of an SSN — ever passing through your servers or being readable by your frontend code:
 
 - **[Card Reveal](./card-reveal-guide.md)** — display a cardholder's full Fluz virtual card details (PAN, CVV, expiry).
 - **[Secure Card Input](./secure-card-input-guide.md)** — collect a physical card from your user and add it as a payment method on their Fluz account.
+- **[Secure Identity Input](./secure-identity-input-guide.md)** — collect the last four digits of your user's US SSN for Fluz's own identity verification. Off by default; provisioned per-application by hand, separately from OAuth scope — see that guide's **Provisioning** section.
 
-Both are delivered as isolated frames rendered by Fluz and mounted into your page by our JS SDK. Card data lives only inside those frames — your page and servers only ever see a short-lived, opaque token.
+All three are delivered as isolated frames rendered by Fluz and mounted into your page by our JS SDK. Those sensitive values live only inside the frames — your page and servers only ever see a short-lived, opaque token, and for identity, a verification outcome rather than any token at all. Values your own page supplies to `submit()` are **not** protected this way, because your frontend code handles them before passing them in: the cardholder name and billing address for Secure Card Input, and `firstName`, `lastName`, `dateOfBirth` and the address for Secure Identity Input.
 
 This guide covers what's shared by both capabilities — minting a client token, loading the SDK, styling fields, and CSP/security. Once you've read this, continue to whichever capability guide you need.
 
@@ -23,7 +24,8 @@ Your backend  → mint client token  → Your frontend → SDK mounts Fluz frame
 
 Before you can integrate, please confirm the following with your Fluz integration contact:
 
-- Your application is registered with Fluz and has the OAuth scope for whichever capability you're integrating enabled: `CREATE_VIRTUALCARD` for Card Reveal, `MANAGE_PAYMENT` for Secure Card Input. These are checked independently — a token scoped for one won't mint a client token for the other.
+- Your application is registered with Fluz and has the OAuth scope for whichever capability you're integrating enabled: `CREATE_VIRTUALCARD` for Card Reveal, `MANAGE_PAYMENT` for Secure Card Input, `VERIFY_KYC` for Secure Identity Input. These are checked independently — a token scoped for one won't mint a client token for another.
+- For Secure Identity Input specifically: `VERIFY_KYC` alone isn't enough. It's also gated on a separate capability flag Fluz enables per-application by hand, off by default — see that guide's **Provisioning** section.
 - The origin(s) your page will embed Fluz Elements from are allow-listed for your application (required for the frames to render — this is a one-time setup step on our side).
 - You've received your environment base URL(s) (see **Environments** below).
 
@@ -67,7 +69,7 @@ Authorization: Bearer <your Fluz OAuth access token>
 Content-Type: application/json
 
 {
-  "purpose": "reveal",          // or "tokenization" for Secure Card Input
+  "purpose": "reveal",          // or "tokenization" for Secure Card Input, "identity" for Secure Identity Input
   "virtualCardId": "<uuid>"     // required when purpose is "reveal"
 }
 ```
@@ -87,18 +89,19 @@ Both are single-purpose and short-lived — mint a new pair for each reveal or c
 | 400 | `invalid_purpose` | `purpose` missing or invalid |
 | 400 | `virtual_card_id_required` | missing `virtualCardId` for a reveal token |
 | 401 | `unauthorized` | invalid or missing access token |
-| 403 | `insufficient_scope` | access token missing the scope required for this `purpose` (`CREATE_VIRTUALCARD` for reveal, `MANAGE_PAYMENT` for tokenization) |
+| 403 | `insufficient_scope` | access token missing the scope required for this `purpose` (`CREATE_VIRTUALCARD` for reveal, `MANAGE_PAYMENT` for tokenization, `VERIFY_KYC` for identity) |
 | 403 | `app_not_registered` | your application isn't registered — contact Fluz |
+| 403 | `capability_not_provisioned` | `purpose: "identity"` requested, `VERIFY_KYC` scope present, but Fluz hasn't enabled the identity-input capability for your application yet — contact Fluz (see the [Secure Identity Input guide](./secure-identity-input-guide.md)'s **Provisioning** section) |
 | 403 | `forbidden` | card not found, or not owned by this user |
 | 500 | `internal_error` | unexpected server error |
 
 </details>
 
-With a client token in hand, continue to the **[Card Reveal guide](./card-reveal-guide.md)** or the **[Secure Card Input guide](./secure-card-input-guide.md)**.
+With a client token in hand, continue to the **[Card Reveal guide](./card-reveal-guide.md)**, the **[Secure Card Input guide](./secure-card-input-guide.md)**, or the **[Secure Identity Input guide](./secure-identity-input-guide.md)**.
 
 ## Styling fields
 
-`createCardViewer`, `createAccountViewer`, and `renderFieldsForTokenization` all accept an optional `style` object, applied to every field they mount:
+`createCardViewer`, `createAccountViewer`, `renderFieldsForTokenization`, and `renderIdentityFieldsForTokenization` all accept an optional `style` object, applied to every field they mount:
 
 ```js
 const viewer = createCardViewer({
@@ -114,7 +117,7 @@ const viewer = createCardViewer({
 });
 ```
 
-`style` is validated before anything is sent to the frame — if a value doesn't match what's documented below, `await viewer.mount(...)` (or `await inputs.mount(...)`) rejects with a `FluzElementsError` (`error.code === "INVALID_STYLE"`), so wrap your `mount()` call in a try/catch if you're accepting configurable style input yourself.
+`style` is validated before anything is sent to the frame — if a value doesn't match what's documented below, `mount()` (on whichever of `viewer`/`inputs`/`identity` you're using) rejects with a `FluzElementsError` (`error.code === "INVALID_STYLE"`), so wrap your `mount()` call in a try/catch if you're accepting configurable style input yourself.
 
 | Property | Accepts |
 |---|---|

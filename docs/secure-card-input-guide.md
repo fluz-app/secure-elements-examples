@@ -30,6 +30,7 @@ await inputs.mount(document.getElementById("card-fields"));
 | `mountId` | no | Custom id for the postMessage handshake. Only needed if you're mounting more than one `SecureInputs`/`CardViewer` instance on the same page and need to tell their messages apart; auto-generated otherwise. |
 | `style` | no | `{ color?, fontSize?, fontFamily?, fontWeight?, width?, height?, border?, backgroundColor? }`. See **[Styling fields](./partner-integration-guide.md#styling-fields)** for the typography properties' validation rules, plus the collect-specific caveat and the box-model properties below — `width`/`height`/`border`/`backgroundColor` are currently only supported on this frame, not `createCardViewer`/`createAccountViewer`. |
 | `layout` | no | `"row"` (default) or `"stacked"`. See **[Layout](#layout)** below. |
+| `placeholders` | no | `{ pan?, expiry?, cvv? }` hint text shown inside each empty field. See **[Placeholders](#placeholders)** below. |
 | `mountTimeoutMs` | no | How long `mount()` waits for the frame's handshake before rejecting with `MOUNT_TIMEOUT`. Default `10000`. |
 | `submitTimeoutMs` | no | How long `submit()` waits for a result before firing `onError({code: "SUBMIT_TIMEOUT"})`. Default `15000`. |
 | `excludedCardBrands` | no | e.g. `["amex"]`. Brands you don't accept — the pan field reports `isValid: false` for a matching card instead of letting the user submit it. Detected brands: `"amex"`, `"visa"`, `"mastercard"`, `"discover"`, `"diners"`, `"jcb"`. |
@@ -75,6 +76,20 @@ const inputs = renderFieldsForTokenization({
 ```
 
 An invalid value rejects `mount()` with `FluzElementsError` (`error.code === "INVALID_LAYOUT"`), checked synchronously before anything is sent to the frame — same pattern as `INVALID_STYLE`. Whichever layout you use, give the mount container's height room to match: `row` needs roughly one field's height, `stacked` needs two (plus the 8px gap between them).
+
+### Placeholders
+
+Each field shows hint text while it's empty, so your users can tell the three boxes apart: `Card number`, `MM / YY`, and `CVV` by default. Override any of them, for example to localize, with `placeholders`. A field you leave out keeps its default, and `""` hides that field's hint:
+
+```js
+const inputs = renderFieldsForTokenization({
+  clientToken,
+  loadToken,
+  placeholders: { pan: "Número de tarjeta", expiry: "MM / AA", cvv: "CVC" },
+});
+```
+
+A key other than `pan`/`expiry`/`cvv`, or a non-string value, rejects `mount()` with `INVALID_PLACEHOLDERS`. This is checked before anything is sent to the frame, the same way `INVALID_LAYOUT` is.
 
 ## Field state — `onChange`
 
@@ -152,9 +167,7 @@ A decline means the card itself was rejected — not a bug in your integration. 
 | `FRAUD_FILTER` | This card cannot be added. |
 | `BIN_BLOCKED` | This card cannot be added. |
 | `EXPANDED_BIN_REQUIRED` | This card cannot be added. |
-| `KYB_GATE` | This account is not yet eligible to add a card. |
-| `TRUST_STATUS_FAILED` | This account is not eligible to add a card. |
-| `DEVICE_BLOCKED` | This device is not eligible to add a card. |
+| `TRUST_STATUS_FAILED` | This account is not eligible to add a card. (Also covers a business account whose KYB failed or is under review.) |
 | `MAX_CARDS_REACHED` | The maximum number of cards has been reached. |
 | `DECLINED_OTHER` | The card was declined. (fallback for any reason not in this list) |
 
@@ -170,6 +183,7 @@ Treat any code you don't recognize the same as `DECLINED_OTHER`. The raw gateway
 | `MOUNT_FAILED` | rejected `mount()` / `submit()` | The iframe failed to load, `mount()` was called twice, or `submit()` was called before `mount()` resolved. |
 | `INVALID_STYLE` | rejected `mount()` | A `style` value failed validation — checked before anything is sent to the frame. |
 | `INVALID_LAYOUT` | rejected `mount()` | `layout` wasn't `"row"` or `"stacked"` — checked before anything is sent to the frame. |
+| `INVALID_PLACEHOLDERS` | rejected `mount()` | `placeholders` had a key other than `pan`/`expiry`/`cvv`, or a non-string value — checked before anything is sent to the frame. |
 | `INVALID_FRAME_HOST_ORIGIN` | thrown synchronously by `renderFieldsForTokenization(...)` itself, before `mount()` exists to call | `frameHostOrigin` isn't a valid URL or isn't an allowed Fluz host. |
 | `FIELD_ERROR` | `onError` | The frame hit an internal error updating a field's state. Rare; treat as an unmountable session and re-mount. |
 | `SUBMIT_TIMEOUT` | `onError` | No result arrived within `submitTimeoutMs`. The request may or may not have gone through server-side — don't assume either way; re-check via your backend before letting the user retry. |
@@ -181,7 +195,7 @@ When `onError` fires with `code: "SUBMIT_FAILED"`, `error.message` carries the s
 - `"VALIDATION_FAILED"` — submitted with an invalid/incomplete field; shouldn't happen if you gate your submit button on `onChange`'s `isValid` flags.
 - `"COLLECT_UNAVAILABLE"` — this environment isn't fully provisioned for card collection yet. Not partner-actionable; contact Fluz.
 - `"FUNDING_SOURCE_UNAUTHORIZED"` — Fluz's own backend-to-backend auth to the card-processing service failed. Not caused by anything in your request; safe to retry, but if it persists, contact Fluz.
-- `"FUNDING_SOURCE_UNAVAILABLE"` — the card-processing backend returned an unexpected error (5xx, or a 4xx that wasn't a recognized decline). Safe to retry.
+- `"FUNDING_SOURCE_UNAVAILABLE"` — the card-processing backend returned an unexpected 5xx error. Safe to retry. (An unrecognized 4xx comes back as a `DECLINED_OTHER` decline instead.)
 - `"SUBMIT_FAILED"` — a generic catch-all, including: the tokenization session itself is no longer valid (the client token or its underlying grant expired mid-session — this includes the OAuth access token your backend originally exchanged aging out, since that's re-checked at submit time), or a payment-method rate limit was hit. Since this string doesn't distinguish those cases, treat a `SUBMIT_FAILED` you get quickly after mount as likely rate-limiting (back off before retrying), and one after a long idle period as likely session expiry (mint a fresh client/load token pair and re-mount rather than retrying the same `submit()`).
 
 ## Cleanup
@@ -220,10 +234,17 @@ inputs.onSuccess((result) => showSavedCard(result));
 
 await inputs.mount(document.getElementById("card-fields"));
 
-submitButton.addEventListener("click", () => {
-  inputs.submit({
-    cardholderName: cardholderNameInput.value,
-    billingAddress: { userAddressId: currentUser.defaultAddressId },
-  });
+submitButton.addEventListener("click", async () => {
+  try {
+    // submit() rejects only for guard conditions (not mounted yet, or a
+    // previous submit() still in flight) -- handle it so a double-click
+    // doesn't become an unhandled rejection.
+    await inputs.submit({
+      cardholderName: cardholderNameInput.value,
+      billingAddress: { userAddressId: currentUser.defaultAddressId },
+    });
+  } catch (error) {
+    showGenericError(error.code, error.message);
+  }
 });
 ```
